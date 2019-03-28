@@ -12,7 +12,11 @@
  any redistribution
 *********************************************************************/
 
-/* This sketch demonstrates the client Current Time Service using the
+/* RTC code is from the Adafruit arduino 1.2.0 fork of the Jeelabs RTCLib.
+ *  
+ *  This sketch demonstrates Setting the RTC PCF8523 from the CTS time, 
+ *  aquired from the CTS BLE service.  This is for the RTC used in the 
+ *  Adalogger FeatherWing. The client Current Time Service uses the
  * BLEClientCts API(). After uploading, go to iOS setting and connect
  * to Bluefruit52, and then press PAIR.
  * 
@@ -26,14 +30,40 @@
  */
 
 #include <bluefruit.h>
+#include <Wire.h>
+#include "RTClib.h"
 
 // BLE Client Current Time Service
 BLEClientCts  bleCTime;
+
+// Realtime Clock 
+RTC_PCF8523 rtc;
 
 void setup()
 {
   Serial.begin(115200);
   while ( !Serial ) delay(10);   // for nrf52840 with native usb
+
+  if (! rtc.begin()) {
+    Serial.println("Couldn't find RTC");
+    while (1);
+  }
+
+  if (! rtc.initialized()) {
+    Serial.println("RTC is NOT running!");
+    // The following line sets the RTC to the date & time this sketch was compiled
+    //rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+    // This line sets the RTC with an explicit date & time, for example to set
+    // January 21, 2014 at 3am you would call:
+    //rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
+  }
+
+    //Uncomment the line below to set the RTC time to an old date,
+  // before querying the BLE Current Time Service, so you can tell
+  // if the RTC was synced properly.  This is useful when you have
+  // already set the RTC to the current time and are testing the 
+  // CTS sync process.
+  //rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
 
   Serial.println("Bluefruit52 BLE Client Current Time Example");
   Serial.println("-------------------------------------------\n");
@@ -95,7 +125,10 @@ void startAdv(void)
 
 void loop()
 {
-  // If service is not yet discovered
+  //Print the RTC time before the bleCTime is checked
+  rtcPrintTime();
+  
+  // If CTS service is not yet discovered
   if ( !bleCTime.discovered() && !Bluefruit.connPaired() ) return;
 
   // Get Time from iOS once per second
@@ -126,11 +159,14 @@ void connect_callback(uint16_t conn_handle)
       Serial.println("Enabling Time Adjust Notify");
       bleCTime.enableAdjust();
 
-      Serial.print("Get Current Time chars value");
+      Serial.println("Get Current Time chars value");
       bleCTime.getCurrentTime();
 
-      Serial.print("Get Local Time Info chars value");
+      Serial.println("Get Local Time Info chars value");
       bleCTime.getLocalTimeInfo();
+      Serial.println();
+      delay(1000);
+      syncRTCtoCTS();
 
       Serial.println();
     }
@@ -173,4 +209,36 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason)
 
   Serial.println();
   Serial.println("Disconnected");
+}
+
+void syncRTCtoCTS()
+{
+   Serial.println("Syncing RTC from CTS...");
+   
+   // This line sets the RTC with the date/time from the Current Time Service:
+    rtc.adjust(DateTime(bleCTime.Time.year, bleCTime.Time.month, bleCTime.Time.day, bleCTime.Time.hour, bleCTime.Time.minute, bleCTime.Time.second));
+}
+
+void rtcPrintTime()
+{
+    DateTime now = rtc.now();
+    Serial.print("                                                  RTC   ");                                    
+    Serial.print(now.year(), DEC);
+    Serial.print('/');
+    Serial.print(now.month(), DEC);
+    Serial.print('/');
+    Serial.print(now.day(), DEC);
+     Serial.print("  ");
+    Serial.print(now.hour(), DEC);
+    Serial.print(':');
+    Serial.print(now.minute(), DEC);
+    Serial.print(':');
+    Serial.print(now.second(), DEC);
+    Serial.println();
+    
+    Serial.print(" since midnight 1/1/1970 = ");
+    Serial.print(now.unixtime());
+    Serial.print("s = ");
+    Serial.print(now.unixtime() / 86400L);
+    Serial.println("d");
 }
